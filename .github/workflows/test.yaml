@@ -15,19 +15,19 @@ jobs:
       fail-fast: false
       matrix:
         pnpm:
-          - 4.11.1
+          - 9.15.5
         os:
           - ubuntu-latest
           - macos-latest
           - windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Run the action
         uses: ./
         with:
-          version: 4.11.1
+          version: 9.15.5
 
       - name: 'Test: which'
         run: which pnpm; which pnpx
@@ -44,19 +44,19 @@ jobs:
       fail-fast: false
       matrix:
         pnpm:
-          - 4.11.1
+          - 9.15.5
         os:
           - ubuntu-latest
           - macos-latest
           - windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Run the action
         uses: ./
         with:
-          version: 4.11.1
+          version: 9.15.5
           dest: ~/test/pnpm
 
       - name: 'Test: which'
@@ -74,8 +74,8 @@ jobs:
       fail-fast: false
       matrix:
         os:
+          # macos is excluded from this test because node 12 is no longer available on this platform
           - ubuntu-latest
-          - macos-latest
           - windows-latest
 
         standalone:
@@ -83,16 +83,16 @@ jobs:
           - false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Run the action
         uses: ./
         with:
-          version: 7.0.0
+          version: 9.15.0
           standalone: ${{ matrix.standalone }}
 
       - name: install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           # pnpm@7.0.0 is not compatible with Node.js 12
           node-version: 12.22.12
@@ -129,7 +129,7 @@ jobs:
       fail-fast: false
       matrix:
         pnpm:
-          - 4.11.1
+          - 9.15.5
         os:
           - ubuntu-latest
           - macos-latest
@@ -149,7 +149,6 @@ jobs:
                 - --global-dir=./pnpm-global
                 - npm
                 - yarn
-                - pnpm
           - name: 'array'
             value: |
               - {}
@@ -159,15 +158,14 @@ jobs:
                 - --global-dir=./pnpm-global
                 - npm
                 - yarn
-                - pnpm
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Run the action
         uses: ./
         with:
-          version: 4.11.1
+          version: 9.15.5
           run_install: ${{ matrix.run_install.value }}
 
       - name: 'Test: which'
