@@ -2,8 +2,6 @@ node_modules
 *.log
 /dist/*
 !/dist/index.js
-!/dist/pnpm.cjs
-!/dist/worker.js
 tmp
 temp
 *.tmp
@@ -11,3 +9,4 @@ temp
 tmp.*
 temp.*
 .pnpm-store
+.claude
