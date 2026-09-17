@@ -10,6 +10,7 @@ jobs:
     name: Test with default inputs
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -54,6 +55,7 @@ jobs:
     name: Test with dest
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -91,6 +93,7 @@ jobs:
     name: Test with standalone
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -135,6 +138,7 @@ jobs:
     # so a user requesting e.g. `version: 9.15.5` would silently get the bootstrap version.
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -172,6 +176,7 @@ jobs:
     # the action should install the version specified there.
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -209,6 +214,7 @@ jobs:
     name: Test with devEngines.packageManager
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
@@ -259,6 +265,7 @@ jobs:
     name: 'Test with run_install (${{ matrix.run_install.name }}, ${{ matrix.os }})'
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 8
 
     strategy:
       fail-fast: false
