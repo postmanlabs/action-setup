@@ -5,13 +5,13 @@
   "packages": {
     "": {
       "dependencies": {
-        "pnpm": "11.0.4"
+        "pnpm": "11.25.0"
       }
     },
     "node_modules/pnpm": {
-      "version": "11.0.4",
-      "resolved": "https://registry.npmjs.org/pnpm/-/pnpm-11.0.4.tgz",
-      "integrity": "sha512-CjlxZQB6AU7VKRmmHl9GxIubyohATDA+yuzGP2Le9WOJjTxril1epYEes5jP4DqwXaGlzpY/Em1erUwC+TuDww==",
+      "version": "11.25.0",
+      "resolved": "https://registry.npmjs.org/pnpm/-/pnpm-11.25.0.tgz",
+      "integrity": "sha512-XN6SW08HX3Jetx+64YpC/+eEUkeJ8ZthxzHLhyHsKKruFg4BqNWvT+2ypCzb8wDv4j2zVrDUoXtNY+EfirfJVg==",
       "license": "MIT",
       "bin": {
         "pn": "bin/pnpm.mjs",

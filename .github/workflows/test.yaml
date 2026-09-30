@@ -1,43 +1,85 @@
 name: Test Action
 
 on:
-  - push
-  - pull_request
-  - workflow_dispatch
+  pull_request:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
 
 jobs:
-  test_default_inputs:
-    name: Test with default inputs
+  smoke:
+    # Cross-OS coverage. Exercises the bootstrap install + PATH on each platform,
+    # the version-respects-request regression (#225 / #230 — Windows PATH shadow),
+    # and the bin_dest output regression (#247). Multi-version coverage on Linux
+    # so we don't pay 3x for major-version differences.
+    name: 'Smoke (${{ matrix.name }})'
 
     runs-on: ${{ matrix.os }}
 
     strategy:
       fail-fast: false
       matrix:
-        pnpm:
-          - 9.15.5
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - name: 'ubuntu / v9.15.5'
+            os: ubuntu-latest
+            version: '9.15.5'
+          - name: 'ubuntu / v10.33.0'
+            os: ubuntu-latest
+            version: '10.33.0'
+          - name: 'ubuntu / v11.25.0'
+            os: ubuntu-latest
+            version: '11.25.0'
+          - name: 'ubuntu / v12.3.4'
+            os: ubuntu-latest
+            version: '12.3.4'
+          - name: 'ubuntu / v9.15.5 / custom-dest'
+            os: ubuntu-latest
+            version: '9.15.5'
+            dest: '~/test/pnpm'
+          - name: 'macos / v9.15.5'
+            os: macos-latest
+            version: '9.15.5'
+          - name: 'macos / v12.3.4'
+            os: macos-latest
+            version: '12.3.4'
+          - name: 'windows / v9.15.5'
+            os: windows-latest
+            version: '9.15.5'
+          - name: 'windows / v12.3.4'
+            os: windows-latest
+            version: '12.3.4'
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
-      - name: Run the action
+      - id: pnpm
+        name: Run the action
         uses: ./
         with:
-          version: 9.15.5
+          version: ${{ matrix.version }}
+          dest: ${{ matrix.dest || '~/setup-pnpm' }}
 
-      - name: 'Test: which'
-        run: which pnpm; which pnpx
-
-      - name: 'Test: version'
+      - name: 'Test: pnpm/pnpx on PATH report the requested version (incl. via bin_dest)'
+        # Pass paths via env, not template interpolation, so Windows
+        # backslashes in `bin_dest` aren't eaten by bash's escape handling.
+        env:
+          BIN_DEST: ${{ steps.pnpm.outputs.bin_dest }}
+          REQUIRED: ${{ matrix.version }}
         run: |
+          set -e
+          which pnpm
+          which pnpx
           actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [[ ! "${actual}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-            echo "ERROR: pnpm --version did not produce valid output"
+          echo "pnpm --version: ${actual}"
+          if [ "${actual}" != "${REQUIRED}" ]; then
+            echo "Expected pnpm version ${REQUIRED}, but got ${actual}"
+            exit 1
+          fi
+          bin_dest_version="$("$BIN_DEST/pnpm" --version)"
+          echo "bin_dest pnpm --version: ${bin_dest_version}"
+          if [ "${bin_dest_version}" != "${REQUIRED}" ]; then
+            echo "Expected ${REQUIRED} via bin_dest, but got ${bin_dest_version}"
             exit 1
           fi
         shell: bash
@@ -50,225 +92,240 @@ jobs:
           pnpm add is-odd
         shell: bash
 
-  test_dest:
-    name: Test with dest
+  manifest_pin:
+    # Folds the old test_package_manager_field, test_dev_engines, and
+    # test_dev_engines_on_fail_error jobs. The action's manifest handling is
+    # OS-independent, so ubuntu-only is sufficient.
+    name: 'Manifest pin: ${{ matrix.label }}'
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        pnpm:
-          - 9.15.5
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - label: 'packageManager pnpm@9.15.5 (#227)'
+            manifest: '{"packageManager":"pnpm@9.15.5"}'
+            version: '9.15.5'
+          - label: 'packageManager pnpm@10.33.0'
+            manifest: '{"packageManager":"pnpm@10.33.0"}'
+            version: '10.33.0'
+          - label: 'devEngines onFail=download, exact'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":"9.15.5","onFail":"download"}}}'
+            version: '9.15.5'
+          - label: 'devEngines onFail=download, range'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":">=9.15.0","onFail":"download"}}}'
+            version: '>=9.15.0'
+          - label: 'devEngines onFail=error, exact (#252)'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":"9.15.5","onFail":"error"}}}'
+            version: '9.15.5'
+          - label: 'devEngines onFail=error, range (#252)'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":">=9.15.0","onFail":"error"}}}'
+            version: '>=9.15.0'
+          - label: 'explicit version: pnpm_config_pm_on_fail not exported'
+            # Regression guard for the af8e203 scope fix: when the user passes an
+            # explicit `version:` input, the action must NOT export
+            # pnpm_config_pm_on_fail=download, so the user's strict onFail policy
+            # is preserved. Asserted directly on the env var rather than pnpm
+            # runtime behavior — different pnpm majors read devEngines
+            # differently (v10 ignores it, v11+ honors it).
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":"9.15.5","onFail":"error"}}}'
+            explicit_version: '10.33.0'
+            expect_pm_on_fail_unset: true
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up package.json
+        run: echo '${{ matrix.manifest }}' > package.json
+        shell: bash
 
       - name: Run the action
         uses: ./
         with:
-          version: 9.15.5
-          dest: ~/test/pnpm
+          version: ${{ matrix.explicit_version }}
 
-      - name: 'Test: which'
-        run: which pnpm && which pnpx
-
-      - name: 'Test: version'
-        run: |
-          actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [[ ! "${actual}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-            echo "ERROR: pnpm --version did not produce valid output"
-            exit 1
-          fi
-        shell: bash
-
-  test_standalone:
-    name: Test with standalone
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
-
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Run the action
-        uses: ./
-        with:
-          version: 9.15.0
-          standalone: true
-
-      - name: 'Test: which'
-        run: which pnpm
-
-      - name: 'Test: version'
-        run: |
-          actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [[ ! "${actual}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-            echo "ERROR: pnpm --version did not produce valid output"
-            exit 1
-          fi
-        shell: bash
-
-      - name: 'Test: install in a fresh project'
-        run: |
-          mkdir /tmp/test-standalone
-          cd /tmp/test-standalone
-          pnpm init
-          pnpm add is-odd
-        shell: bash
-
-  test_version_respects_request:
-    name: 'Test version input is actually installed (${{ matrix.version }}, ${{ matrix.os }})'
-    # Regression test for #225 / #230: the bootstrap pnpm on PATH was shadowing the self-updated binary,
-    # so a user requesting e.g. `version: 9.15.5` would silently get the bootstrap version.
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-        version:
-          - '9.15.5'
-          - '10.33.0'
-
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Run the action
-        uses: ./
-        with:
-          version: ${{ matrix.version }}
-
-      - name: 'Test: exact version installed'
-        run: |
-          required='${{ matrix.version }}'
-          actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [ "${actual}" != "${required}" ]; then
-            echo "Expected pnpm version ${required}, but got ${actual}"
-            exit 1
-          fi
-        shell: bash
-
-  test_package_manager_field:
-    name: 'Test packageManager field is respected (${{ matrix.version }}, ${{ matrix.os }})'
-    # Reproduces #227: when `packageManager` is set in package.json and no `version:` input is given,
-    # the action should install the version specified there.
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-        version:
-          - '9.15.5'
-          - '10.33.0'
-
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Set up package.json with packageManager field
-        run: echo '{"packageManager":"pnpm@${{ matrix.version }}"}' > package.json
-        shell: bash
-
-      - name: Run the action
-        uses: ./
-
-      - name: 'Test: exact version installed'
-        run: |
-          required='${{ matrix.version }}'
-          actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [ "${actual}" != "${required}" ]; then
-            echo "Expected pnpm version ${required}, but got ${actual}"
-            exit 1
-          fi
-        shell: bash
-
-  test_dev_engines:
-    name: Test with devEngines.packageManager
-
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
-        version:
-          - '9.15.5'
-          - '>=9.15.0'
-
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
-
-      - name: Set up package.json with devEngines.packageManager
-        run: echo '{"devEngines":{"packageManager":{"name":"pnpm","version":"${{ matrix.version }}","onFail":"download"}}}' > package.json
-        shell: bash
-
-      - name: Run the action
-        uses: ./
-
-      - name: 'Test: which'
-        run: which pnpm; which pnpx
-
-      - name: 'Test: version'
+      - name: 'Test: pnpm reports the pinned version'
+        if: ${{ !matrix.expect_pm_on_fail_unset }}
+        env:
+          REQUIRED: ${{ matrix.version }}
         run: |
           set -e
-          required='${{ matrix.version }}'
           actual="$(pnpm --version)"
           echo "pnpm version: ${actual}"
-
-          if [ "${required}" = ">=9.15.0" ]; then
+          if [ "${REQUIRED}" = ">=9.15.0" ]; then
             min="9.15.0"
             if [ "$(printf '%s\n' "${min}" "${actual}" | sort -V | head -n1)" != "${min}" ]; then
               echo "Expected pnpm version >= ${min}, but got ${actual}"
               exit 1
             fi
           else
-            if [ "${actual}" != "${required}" ]; then
-              echo "Expected pnpm version ${required}, but got ${actual}"
+            if [ "${actual}" != "${REQUIRED}" ]; then
+              echo "Expected pnpm version ${REQUIRED}, but got ${actual}"
               exit 1
             fi
           fi
         shell: bash
 
-  test_run_install:
-    name: 'Test with run_install (${{ matrix.run_install.name }}, ${{ matrix.os }})'
+      - name: 'Test: pnpm_config_pm_on_fail not exported (explicit version preserves strict policy)'
+        if: ${{ matrix.expect_pm_on_fail_unset }}
+        run: |
+          if [ -n "${pnpm_config_pm_on_fail:-}" ]; then
+            echo "Expected pnpm_config_pm_on_fail to be unset, but got: '${pnpm_config_pm_on_fail}'"
+            exit 1
+          fi
+          echo "pnpm_config_pm_on_fail is unset, as expected"
+        shell: bash
 
-    runs-on: ${{ matrix.os }}
+  standalone:
+    name: 'Native pnpm bootstrap (npm 12)'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 26
+
+      - name: Use npm 12
+        run: |
+          npm install --global npm@12.0.2
+          test "$(npm --version)" = "12.0.2"
+
+      - id: pnpm
+        name: Run the action
+        uses: ./
+        with:
+          version: 12
+          standalone: true
+
+      - name: 'Test: pnpm works'
+        env:
+          PNPM_DEST: ${{ steps.pnpm.outputs.dest }}
+        run: |
+          set -e
+          test -x "$PNPM_DEST/node_modules/pnpm/pnpm"
+          test ! -d "$PNPM_DEST/node_modules/@pnpm/exe"
+          which pnpm
+          actual="$(pnpm --version)"
+          if [ "${actual}" != "12.3.4" ]; then
+            echo "Expected 12.3.4, got ${actual}"
+            exit 1
+          fi
+          mkdir /tmp/test-standalone
+          cd /tmp/test-standalone
+          pnpm init
+          pnpm add is-odd
+        shell: bash
+
+  standalone_windows_self_update:
+    # Regression guard for the patchPnpmEnv PATH-shadow bug. When
+    # standalone: true on Windows AND the requested pnpm differs from the
+    # bootstrap, the previous patchPnpmEnv prepended node_modules/.bin to
+    # PATH; that directory contains an npm-created pnpm.cmd shim pointing
+    # at the BOOTSTRAP pnpm, which shadowed the self-updated pnpm at
+    # $PNPM_HOME/bin and caused `pnpm install` inside the action to run
+    # under the bootstrap version. Exercising a newer-pnpm-only flag
+    # (`--no-runtime`, added in 11.1.0) makes the regression assertable:
+    # if the bootstrap (11.0.4) handles the install, it errors with
+    # "Unknown option: 'runtime'".
+    name: 'Standalone Windows self-update (PATH regression)'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up package.json with a minimal manifest
+        # run_install needs a manifest to install against. Removing the
+        # repo's existing pnpm-lock.yaml avoids frozen-lockfile mismatch.
+        run: |
+          rm -f pnpm-lock.yaml
+          echo '{"name":"sw","private":true,"packageManager":"pnpm@11.1.0"}' > package.json
+        shell: bash
+
+      - name: Run the action
+        uses: ./
+        with:
+          version: 11.1.0
+          standalone: true
+          run_install: |
+            args: ['--no-runtime']
+
+      - name: 'Test: pnpm install completed under the self-updated pnpm'
+        # If the bug recurs, the previous step's run_install will have failed
+        # the job with "Unknown option: 'runtime'", so reaching this step
+        # implies success. Still verify the version on PATH matches request.
+        env:
+          REQUIRED: '11.1.0'
+        run: |
+          set -e
+          actual="$(pnpm --version)"
+          echo "pnpm --version: ${actual}"
+          if [ "${actual}" != "${REQUIRED}" ]; then
+            echo "Expected pnpm ${REQUIRED}, got ${actual}"
+            exit 1
+          fi
+        shell: bash
+
+  cache_store_path:
+    # Regression guard for #233. When package.json pins a pnpm major that
+    # differs from the bootstrap pnpm's major, the bootstrap reports its
+    # own STORE_VERSION from `pnpm store path` (the `store` command skips
+    # pnpm's auto-switch). The user's actual `pnpm install` runs under the
+    # pinned version and writes to a different STORE_VERSION, so the post
+    # step's saveCache then fails with "Path Validation Error". The fix is
+    # to self-update the bootstrap to the pinned version up front.
+    name: 'Cache store path matches install (#233): ${{ matrix.label }}'
+
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
       matrix:
-        pnpm:
-          - 9.15.5
-        os:
-          - ubuntu-latest
-          - macos-latest
-          - windows-latest
+        include:
+          - label: 'packageManager pnpm@10.33.0'
+            manifest: '{"packageManager":"pnpm@10.33.0","dependencies":{"is-odd":"3.0.1"}}'
+          - label: 'devEngines exact pnpm@10.33.0'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":"10.33.0"}},"dependencies":{"is-odd":"3.0.1"}}'
+          - label: 'devEngines range >=10 <11'
+            manifest: '{"devEngines":{"packageManager":{"name":"pnpm","version":">=10 <11"}},"dependencies":{"is-odd":"3.0.1"}}'
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up package.json
+        run: echo '${{ matrix.manifest }}' > package.json
+        shell: bash
+
+      - id: pnpm
+        uses: ./
+        with:
+          cache: true
+          run_install: |
+            - args: [--no-frozen-lockfile]
+
+      - name: 'Test: store path computed by the action exists on disk'
+        run: |
+          set -e
+          actual="$(pnpm store path --silent)"
+          echo "pnpm store path: ${actual}"
+          if [ ! -d "${actual}" ]; then
+            echo "Expected store path to exist on disk; cache save would fail"
+            exit 1
+          fi
+        shell: bash
+
+  run_install:
+    name: 'run_install (${{ matrix.run_install.name }})'
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
         run_install:
           - name: 'null'
             value: 'null'
@@ -289,15 +346,14 @@ jobs:
           version: 9.15.5
           run_install: ${{ matrix.run_install.value }}
 
-      - name: 'Test: which'
-        run: which pnpm; which pnpx
-
-      - name: 'Test: version'
+      - name: 'Test: pnpm works'
         run: |
+          set -e
+          which pnpm
+          which pnpx
           actual="$(pnpm --version)"
-          echo "pnpm version: ${actual}"
-          if [[ ! "${actual}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-            echo "ERROR: pnpm --version did not produce valid output"
+          if [ "${actual}" != "9.15.5" ]; then
+            echo "Expected 9.15.5, got ${actual}"
             exit 1
           fi
         shell: bash

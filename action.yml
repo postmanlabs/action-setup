@@ -20,7 +20,7 @@ inputs:
     required: false
     default: 'false'
   cache_dependency_path:
-    description: File path to the pnpm lockfile, which contents hash will be used as a cache key
+    description: File path to the pnpm lockfile, whose contents hash will be used as a cache key. Accepts multiple paths delimited by newlines.
     required: false
     default: 'pnpm-lock.yaml'
   package_json_file:
@@ -28,7 +28,7 @@ inputs:
     required: false
     default: 'package.json'
   standalone:
-    description: When set to true, @pnpm/exe, which is a Node.js bundled package, will be installed, enabling using pnpm without Node.js.
+    description: When set to true for pnpm v11 and earlier, install @pnpm/exe to use pnpm without Node.js. pnpm v12 uses the plain pnpm package's native executable.
     required: false
     default: 'false'
 outputs:

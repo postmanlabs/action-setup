@@ -1,11 +1,8 @@
 import { setFailed, startGroup, endGroup } from '@actions/core'
 import { spawnSync } from 'child_process'
 import { Inputs } from '../inputs'
-import { patchPnpmEnv } from '../utils'
 
 export function runPnpmInstall(inputs: Inputs) {
-  const env = patchPnpmEnv(inputs)
-
   for (const options of inputs.runInstall) {
     const args = ['install']
     if (options.recursive) args.unshift('recursive')
@@ -14,11 +11,16 @@ export function runPnpmInstall(inputs: Inputs) {
     const cmdStr = ['pnpm', ...args].join(' ')
     startGroup(`Running ${cmdStr}...`)
 
+    // spawnSync inherits process.env, which already has $PNPM_HOME/bin and
+    // $PNPM_HOME prepended via addPath() in install-pnpm. Do NOT pass a
+    // hand-patched env that adds node_modules/.bin to the front — on
+    // Windows standalone, .bin/pnpm.cmd is an npm shim pointing at the
+    // BOOTSTRAP pnpm, which would shadow the self-updated one and break
+    // newer-pnpm-only behavior.
     const { error, status } = spawnSync('pnpm', args, {
       stdio: 'inherit',
       cwd: options.cwd,
       shell: true,
-      env,
     })
 
     endGroup()

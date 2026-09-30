@@ -4,13 +4,15 @@ import runSelfInstaller from './run'
 
 export { runSelfInstaller }
 
-export async function install(inputs: Inputs) {
+export async function install(inputs: Inputs): Promise<string | undefined> {
   startGroup('Running self-installer...')
-  const status = await runSelfInstaller(inputs)
+  const { exitCode, binDest } = await runSelfInstaller(inputs)
   endGroup()
-  if (status) {
-    return setFailed(`Something went wrong, self-installer exits with code ${status}`)
+  if (exitCode) {
+    setFailed(`Something went wrong, self-installer exits with code ${exitCode}`)
+    return undefined
   }
+  return binDest
 }
 
 export default install
